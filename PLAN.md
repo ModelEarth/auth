@@ -133,7 +133,7 @@ Ordering is open to revision.
 
 ## Environment variables
 
-The following move from `docker/.env` to `CloudRoot/worker`.
+The following move from the local env file (see `automation/paths.yaml`) to `CloudRoot/worker`.
 
 | Variable | Notes |
 |---|---|
@@ -147,7 +147,7 @@ The following move from `docker/.env` to `CloudRoot/worker`.
 `@neondatabase/serverless` also needs adding to `chat/package.json`
 explicitly, since it is currently only present transitively through Drizzle.
 
-`docker/.env` defines `FACEBOOK_APP_ID` and `FACEBOOK_APP_SECRET`, but the
+The local env file defines `FACEBOOK_APP_ID` and `FACEBOOK_APP_SECRET`, but the
 code reads `FACEBOOK_CLIENT_ID` and `FACEBOOK_CLIENT_SECRET`. The `APP_`
 names appear to be unused.
 
