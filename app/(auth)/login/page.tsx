@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect } from "react";
 
 import { EmailPasswordSignIn } from "@/components/email-password-signin";
@@ -10,7 +10,6 @@ import { useDbStatus } from "@/lib/auth/use-db-status";
 const isVercel = !!process.env.NEXT_PUBLIC_VERCEL_URL;
 
 function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const { loading, user } = useAuth();
   const dbStatus = useDbStatus();
@@ -18,10 +17,12 @@ function LoginForm() {
   // Redirect if already authenticated
   useEffect(() => {
     if (user && !loading) {
-      const returnTo = searchParams.get("returnTo") || "/chat";
-      router.push(returnTo);
+      // returnTo is a site path outside this app's /auth basePath, so leave
+      // the app with a full navigation. Only same-site paths are accepted.
+      const returnTo = searchParams.get("returnTo") ?? "";
+      window.location.assign(/^\/(?!\/)/.test(returnTo) ? returnTo : "/");
     }
-  }, [user, loading, router, searchParams]);
+  }, [user, loading, searchParams]);
 
   // Show loading state while checking authentication
   if (loading) {
@@ -37,7 +38,7 @@ function LoginForm() {
     );
   }
 
-  // Keep showing spinner while redirect to /chat is in flight
+  // Keep showing spinner while the redirect is in flight
   if (user) {
     return (
       <div className="flex h-dvh w-screen items-center justify-center bg-background">

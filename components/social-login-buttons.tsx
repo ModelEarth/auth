@@ -1,10 +1,10 @@
 "use client";
 
+import { authApiUrl } from "@/lib/auth/api-url";
 import { useAuth } from "@/lib/auth/hooks";
 import { useConfiguredProviders } from "@/lib/auth/use-configured-providers";
 import { Button } from "@/components/ui/button";
 
-const AUTH_API_URL = process.env.NEXT_PUBLIC_AUTH_API_URL ?? "http://localhost:3700";
 
 const PROVIDERS = [
   {
@@ -72,7 +72,7 @@ export function SocialLoginButtons() {
   const configured = new Set(configuredProviders);
 
   function signInWith(provider: string) {
-    window.location.href = `${AUTH_API_URL}/api/oauth/${provider}?redirect=${encodeURIComponent(window.location.href)}`;
+    window.location.href = `${authApiUrl()}/api/oauth/${provider}?redirect=${encodeURIComponent(window.location.href)}`;
   }
 
   if (loading) {

@@ -4,6 +4,12 @@ Move authentication out of the `chat` repo into a standalone `auth`
 submodule: a static frontend backed by a Cloudflare Worker, so that `chat`,
 `requests`, and future Rust and .NET frontends can share a single sign-in.
 
+**Status (Oct 2026):** phases 1 and 3 are built. The frontend is a static
+export served at `cloud.model.earth/auth/`, and the backend runs in
+`CloudRoot/worker/src/auth/` on the same origin. The Worker runs without a
+database (stateless sessions) until Neon is provisioned. See CloudRoot's
+`PLAN.md` and `worker/README.md`.
+
 ## Scope
 
 Auth is not a pure frontend extraction. The sign-in interface moves across
@@ -18,53 +24,60 @@ separate efforts.
 
 ## Database
 
-**Decision: Neon, using the Neon serverless driver.**
+**Decision: Neon preferred, any Postgres supported, chosen by `POSTGRES_URL`.**
 
-Cloudflare Workers cannot open raw TCP connections, which rules out the
-current `drizzle-orm/postgres-js` client. The Neon serverless driver
-(`@neondatabase/serverless`) carries queries over HTTP instead, and works
-identically on Workers and on Vercel. Drizzle's `neon-http` adapter is
-already available in the installed version (0.45.2), so no ORM upgrade is
-required.
+Cloudflare Workers can't keep a regular pooled Postgres client, so the
+Worker (`worker/src/auth/db.js`) picks a driver from the URL:
 
-The change in `lib/db/queries/base.ts` is around ten lines. Two imports
-change, and the connection-pool configuration is removed, since HTTP mode is
-stateless and has no pool. `lib/auth/instance.ts` requires no changes,
-because BetterAuth's Drizzle adapter accepts any Drizzle client.
+- **Neon** (`*.neon.tech`): `@neondatabase/serverless` over HTTP, through
+  Drizzle's `neon-http` adapter. Stateless, with no connection to open, so
+  it's the fastest option on Workers.
+- **Any other Postgres (Supabase, Azure, ...)**: `postgres` (postgres.js) over
+  a TCP socket, one connection per request, through Drizzle's `postgres-js`
+  adapter. Supabase should use its pooler URL (port 6543), since the direct
+  host is IPv6-only on newer projects. Cloudflare Hyperdrive would add
+  pooling here if that's needed later.
 
-**This ties the Worker to Neon.** The driver targets Neon's own HTTP endpoint
-and does not work against Supabase. Migrating auth to a Worker and migrating
-the database to Neon are therefore a single decision rather than two.
-
-### Supporting other hosts
-
-Supporting Supabase or Azure alongside Neon requires a second connection
-path, either the driver's WebSocket mode or Cloudflare Hyperdrive. Both
-behave differently from HTTP mode and need independent testing. This is
-recommended as a later phase rather than an initial requirement.
+BetterAuth's Drizzle adapter accepts either client, and the schema
+(`worker/src/auth/schema.js`) matches `db/0001_create_better_auth_tables.sql`.
 
 ### Constraints
 
-Transactions are unavailable in HTTP mode. The driver throws on any call to
-`db.transaction()`. Nothing in `chat` currently calls it, and BetterAuth's
-adapter only uses transactions under MySQL or with a configuration flag that
-is not set here. This is a constraint on future code rather than a present
-blocker.
+Transactions are unavailable in Neon's HTTP mode. BetterAuth's adapter runs
+with `transaction: false` (its default), and nothing here calls
+`db.transaction()`. That constrains future code, not current code.
 
-The swap affects more than auth. Nine modules share the client exported from
-`base.ts`, covering chat history, documents, admin configuration, usage
-tracking and GitHub queries as well as auth. All of them move to HTTP mode
-simultaneously and should be tested together.
+For `chat`, the switch to Neon still affects more than auth. Nine modules
+share the client exported from `lib/db/queries/base.ts`, covering chat
+history, documents, admin configuration, usage tracking and GitHub queries
+as well as auth, and they should be tested together.
 
 Migration is required. Moving from Supabase to Neon means migrating the four
 auth tables, and all users are signed out once at cutover. Password hashes
-migrate with the `account` table, so existing credentials remain valid.
+migrate with the `account` table, so existing credentials remain valid (see
+below).
 
 ## Password storage
 
-BetterAuth hashes passwords one-way by default. Stored values cannot be
-reversed, and recovery is by reset only. No additional work is required to
-meet this requirement.
+Hashes are one-way; recovery is by reset only.
+
+**Hashing runs in Postgres.** The free Workers plan allows 10 ms of CPU per
+request, and BetterAuth's default scrypt takes longer than that. The limit
+counts only time the Worker spends computing, not time waiting on the
+database. So the Worker hashes and checks passwords with pgcrypto's bcrypt
+(`crypt(password, gen_salt('bf', 10))`): it sends the password, waits for the
+result, and continues in the same request. `db/0002_enable_pgcrypto.sql`
+enables the extension; it's available on Neon and Supabase alike.
+
+**Existing scrypt hashes** (created by chat's Node BetterAuth) are checked
+once in the Worker with `node:crypto` and rewritten as bcrypt. That one check
+may exceed the free-plan CPU limit; if it does, the user resets their
+password.
+
+**Consequence for a shared database:** chat's Node BetterAuth can't verify
+bcrypt. So the Worker must not share chat's database until chat uses the
+same hash and verify functions. That change belongs with phase 2, after
+which one database serves both.
 
 ## Current implementation in `chat`
 
@@ -103,11 +116,11 @@ this feature carries over needs deciding before they are touched.
 
 ## Open questions
 
-**Origin model.** The two OAuth proxy routes exist because Chrome incognito
-blocks `SameSite=None` cookies set through a cross-origin fetch. Splitting
-the frontend and the Worker across different origins makes this harder rather
-than easier. Serving the Worker under a path on the same domain would avoid
-the problem.
+**Origin model.** *Resolved.* The Worker serves the pages and the API on one
+origin (`cloud.model.earth`), so sign-in on the site is first-party. Pages on
+other origins (e.g. model.earth) use the widget's `/api/oauth/:provider`
+navigation plus the relay, which keeps working in Chrome incognito. Cookies
+are `SameSite=Lax`; model.earth subdomains are the same site.
 
 **Session validation in `chat`.** Around twenty routes call `requireAuth()`
 or `requireAdmin()`. Once auth moves out, they need either to call the auth
@@ -115,15 +128,17 @@ Worker or to verify session tokens locally against a shared secret.
 
 ## Phases
 
-1. **Static frontend.** Move the sign-in interface into this submodule, still
-   calling the existing `chat` endpoints. This proves the frontend stands
-   alone without risking sign-in.
-2. **Neon migration.** Provision Neon, migrate the four auth tables, and
-   switch `base.ts` to `drizzle-orm/neon-http`.
-3. **Auth Worker.** Build the backend in `CloudRoot/worker`, deployed
-   alongside the existing implementation rather than replacing it.
-4. **Cutover.** Point the submodule at the Worker. Verify each OAuth
-   provider, including in Chrome incognito.
+1. ✅ **Static frontend.** The sign-in interface is in this submodule, built
+   as a static export (`basePath: /auth`). It calls the API on its own
+   origin by default, or `NEXT_PUBLIC_AUTH_API_URL`.
+2. **Neon migration.** Provision Neon, run `db/0001` and `db/0002`, and set the
+   Worker's `POSTGRES_URL`. For chat: switch `base.ts` to
+   `drizzle-orm/neon-http`, give its BetterAuth the same pgcrypto hash and
+   verify functions, then copy the four auth tables from Supabase.
+3. ✅ **Auth Worker.** Built in `CloudRoot/worker/src/auth`, deployed
+   alongside chat's implementation rather than replacing it.
+4. **Cutover.** Point other sites' widgets at `cloud.model.earth`. Verify each
+   OAuth provider, including in Chrome incognito.
 5. **Session validation.** Give `chat` and `requests` a way to validate
    sessions issued by the Worker.
 6. **Cleanup.** Remove the old implementation from `chat`, as set out in
@@ -133,19 +148,19 @@ Ordering is open to revision.
 
 ## Environment variables
 
-The following move from the local env file (see `automation/paths.yaml`) to `CloudRoot/worker`.
+Set on the Worker as secrets, pushed from GitHub secrets by
+`deploy-worker.yml` (copy them from the local env file with
+`automation/sync-config.sh`; see `automation/paths.yaml`).
 
 | Variable | Notes |
 |---|---|
 | `BETTER_AUTH_SECRET` | Minimum 32 characters |
-| `BETTER_AUTH_BASE_URL` | Falls back to `VERCEL_URL`, then localhost |
-| `ALLOWED_ORIGINS` | Required in production |
-| `POSTGRES_URL` | Becomes the Neon connection string |
-| `REQUIRE_AUTH` | Optional |
-| `<PROVIDER>_CLIENT_ID` and `_SECRET` | One pair per social provider |
+| `BETTER_AUTH_BASE_URL` | Optional; defaults to the request's origin |
+| `ALLOWED_ORIGINS` | Other origins allowed to call the API (`wrangler.toml` `[vars]`) |
+| `POSTGRES_URL` | Neon, or any Postgres; unset means stateless sessions |
+| `<PROVIDER>_CLIENT_ID` and `_SECRET` | One pair per social provider. GitHub's pair is stored in GitHub secrets as `GH_CLIENT_ID` / `GH_CLIENT_SECRET`, since GitHub reserves the `GITHUB_` prefix |
 
-`@neondatabase/serverless` also needs adding to `chat/package.json`
-explicitly, since it is currently only present transitively through Drizzle.
+`REQUIRE_AUTH` stays with `chat`; it gates chat's own pages.
 
 The local env file defines `FACEBOOK_APP_ID` and `FACEBOOK_APP_SECRET`, but the
 code reads `FACEBOOK_CLIENT_ID` and `FACEBOOK_CLIENT_SECRET`. The `APP_`

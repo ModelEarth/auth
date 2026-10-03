@@ -483,7 +483,7 @@ export default function Page() {
           </div>
           {/* Outside the disabled/faded wrapper — navigating to /login
               doesn't touch the database, so it should stay clickable even
-              when Supabase/POSTGRES_URL isn't configured or reachable. */}
+              when the POSTGRES_URL database isn't configured or reachable. */}
           <p className="mt-4 px-4 text-center text-gray-600 text-sm sm:px-16 dark:text-zinc-400">
             {"Already have an account? "}
             <Link

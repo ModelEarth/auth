@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { authApiUrl } from "@/lib/auth/api-url";
 
 // Distinguishes "nothing set up yet" from "configured but currently down" —
 // the two need different messages (and different fix-it links) wherever a
@@ -13,18 +14,16 @@ import { useEffect, useState } from "react";
 // it from here instead.
 export type DbStatus = "ok" | "not-configured" | "unreachable";
 
-const AUTH_API_URL = process.env.NEXT_PUBLIC_AUTH_API_URL ?? "http://localhost:3700";
 
 // This app has no server of its own to compute DbStatus, so it fetches it
-// from chat's existing /api/auth/db-status route instead of the relative
-// same-origin path the original hook used. Defaults to "ok" while loading
+// from the sign-in API's /api/auth/db-status route. Defaults to "ok" while loading
 // so the form doesn't flash a false-positive warning before the first
 // response arrives.
 export function useDbStatus(): DbStatus {
   const [status, setStatus] = useState<DbStatus>("ok");
 
   useEffect(() => {
-    fetch(`${AUTH_API_URL}/api/auth/db-status`)
+    fetch(`${authApiUrl()}/api/auth/db-status`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.status) setStatus(data.status);

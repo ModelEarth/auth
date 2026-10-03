@@ -1,16 +1,16 @@
 "use client";
 
 import { createAuthClient } from "better-auth/react";
+import { authApiUrl } from "./api-url";
 import type { User, Session, UserMetadata, SignUpEmailStatus } from "./types";
 
-// This app has no auth backend of its own — it calls chat's existing
-// BetterAuth instance over HTTP. NEXT_PUBLIC_AUTH_API_URL is the origin of
-// that instance (e.g. http://localhost:3700); basePath is appended to it.
-// better-auth auto-enables `credentials: "include"` when baseURL is
-// cross-origin, but chat's CORS config must allow this app's origin with
-// credentials for sign-in/sign-up/session calls to actually succeed.
+// This app has no auth backend of its own — it calls a BetterAuth API over
+// HTTP: the CloudRoot Worker on the same origin, or chat's server when
+// NEXT_PUBLIC_AUTH_API_URL points there (see api-url.ts). better-auth
+// auto-enables `credentials: "include"` when baseURL is cross-origin, and
+// that server must then allow this app's origin with credentials.
 export const authClient = createAuthClient({
-  baseURL: process.env.NEXT_PUBLIC_AUTH_API_URL ?? "http://localhost:3700",
+  baseURL: authApiUrl(),
   basePath: "/api/auth",
 });
 
@@ -28,7 +28,7 @@ function friendlyError(err: { message?: string; status?: number } | null | undef
   if (raw.includes("rate") || status === 429)
     return new Error("Too many attempts. Please wait a moment and try again.");
   if (status >= 500 || raw.includes("database") || raw.includes("connect") || raw.includes("enotfound"))
-    return new Error("Unable to reach the database. Check that your Supabase project is active and POSTGRES_URL is correct in your .env file.");
+    return new Error("Unable to reach the database. Check that it is running and POSTGRES_URL is correct on the server.");
   return new Error(err?.message || "Something went wrong. Please try again.");
 }
 

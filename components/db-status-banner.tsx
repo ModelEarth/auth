@@ -3,25 +3,23 @@
 import { InfoIcon } from "@/components/icons";
 import type { DbStatus } from "@/lib/auth/use-db-status";
 
-const SETUP_GUIDE_URL =
-  "https://github.com/modelearth/chat/blob/main/DEPLOYMENT_GUIDE.md#step-1--create-a-supabase-project";
-const SUPABASE_DASHBOARD_URL = "https://supabase.com/dashboard/projects";
+const SETUP_GUIDE_URL = "https://github.com/ModelEarth/auth#database";
 
 export function getDbStatusMessage(status: DbStatus, isVercel: boolean): string {
   if (status === "not-configured") {
     return isVercel
       ? "Activate by adding POSTGRES_URL to your Vercel environment variables."
-      : "Activate by adding POSTGRES_URL to your local env file (see automation/paths.yaml).";
+      : "Activate by adding POSTGRES_URL where the sign-in API runs: a Cloudflare Worker secret, or your local env file (see automation/paths.yaml).";
   }
   if (status === "unreachable") {
-    return "Can't reach the database. If you're on Supabase's free tier, projects pause after about 14 days of inactivity — restart it from your Supabase dashboard.";
+    return "Can't reach the database. Free-tier Neon and Supabase databases pause when idle, so check that yours is active.";
   }
   return "";
 }
 
 // Shared by EmailPasswordSignIn (/auth, /login) and /register so all three
 // pages explain a down/unset database the same way, with the same fix-it
-// link for each of the two distinct failure modes.
+// link.
 export function DbStatusBanner({
   status,
   isVercel,
@@ -34,8 +32,8 @@ export function DbStatusBanner({
   if (status === "ok") return null;
 
   const message = getDbStatusMessage(status, isVercel);
-  const linkHref = status === "unreachable" ? SUPABASE_DASHBOARD_URL : SETUP_GUIDE_URL;
-  const linkLabel = status === "unreachable" ? "Open Supabase dashboard" : "Get POSTGRES_URL from Supabase";
+  const linkHref = SETUP_GUIDE_URL;
+  const linkLabel = "Database setup";
 
   return (
     <div
