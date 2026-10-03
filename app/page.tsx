@@ -18,7 +18,7 @@ function getErrorMessage(error: string, provider?: string): string | null {
   }
   if (error === "provider_not_configured") {
     const name = provider ? `${provider.charAt(0).toUpperCase() + provider.slice(1)}` : "This provider";
-    return `${name} login is not configured. Add ${provider?.toUpperCase()}_CLIENT_ID and ${provider?.toUpperCase()}_CLIENT_SECRET to your .env.local file and restart the server.`;
+    return `${name} login is not configured. Add ${provider?.toUpperCase()}_CLIENT_ID and ${provider?.toUpperCase()}_CLIENT_SECRET where the sign-in API runs (Worker secrets, or your local env file).`;
   }
   if (error) {
     return "Sign-in failed. Please try again.";
