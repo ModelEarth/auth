@@ -49,6 +49,9 @@ so social sign-in works but email/password doesn't. To store users, give the
 Worker a Postgres database as `POSTGRES_URL`. Neon is preferred; Supabase and
 other Postgres hosts work too.
 
+In CloudRoot, `node automation/setup-neon.mjs` does all of this, given a
+`NEON_API_KEY` in the env file (see `automation/README.md`). By hand:
+
 1. Create the database.
 2. Run `db/0001_create_better_auth_tables.sql`, then
    `db/0002_enable_pgcrypto.sql`. Passwords are hashed by Postgres (pgcrypto
