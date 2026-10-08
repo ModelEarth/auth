@@ -7,7 +7,8 @@ is BetterAuth running in the CloudRoot Worker.
 
 Status as of October 2026, for whoever continues the work. This file merges
 Deeba's handover note with the earlier `PLAN.md` and `PLAN-CLEANUP.md`, and
-was checked against the code on 7 October 2026. Companion documents:
+was checked against the code on 7 October 2026 and updated on 8 October,
+when the Neon database was created. Companion documents:
 `PLAN.md` at the CloudRoot root (the single-Worker deployment) and
 `worker/README.md` (API, config and secrets).
 
@@ -23,8 +24,15 @@ cloud.model.earth ──┬─ /auth/      this repo's static export (auth/out)
 chat (Vercel)       ── its own BetterAuth, unchanged, still the live sign-in for chat
 ```
 
-The Worker runs without a database for now (no `POSTGRES_URL`): sessions
-live in an encrypted cookie, social sign-in works, and email/password is off.
+The Worker's database is the Neon project `cloudroot` (`aws-us-east-1`, in
+the `web@model.earth` organization), created on 8 October 2026 by
+CloudRoot's `automation/setup-neon.mjs`. `/api/auth/db-status` reports
+`ok`, so email/password sign-in is on. A sign-up on the live site hasn't been
+tested yet.
+
+**Users aren't copied from Supabase.** The Neon database started empty.
+People who had chat accounts register again, or sign in with a social
+provider.
 
 Delivered:
 
@@ -37,8 +45,10 @@ Delivered:
 | auth | ca48e1d | Static export served at `/auth/`, same-origin API, vanilla widget in `public/js/`, `db/0002_enable_pgcrypto.sql` |
 | chat | PR #38 | Neon HTTP driver for the database client |
 | chat | PR #39 | `/api/auth/configured-providers` endpoint |
+| chat | efbb774 | pgcrypto bcrypt hashing like the Worker (`lib/auth/password.ts`, `0014_pgcrypto.sql`); `generateId` under `advanced.database` |
 | CloudRoot | PR #4, #7, #8 | pnpm fix in the chat deploy workflow, fork deploy steps, README update |
 | CloudRoot | 7bca03b | One Worker at cloud.model.earth: static site, `/api/*`, sign-in |
+| CloudRoot | a1e55c4, bd4700c | `automation/setup-neon.mjs`: creates the Neon project, runs `db/0001` and `db/0002`, sets `POSTGRES_URL` |
 
 ## Database
 
@@ -49,8 +59,8 @@ a driver from the URL:
 
 - **Neon** (`*.neon.tech`): `@neondatabase/serverless` over HTTP, through
   Drizzle's `neon-http` adapter. No connection to open, so it's the fastest
-  option on Workers. Preferred. *Unverified*: no Neon database existed when
-  the Worker was built.
+  option on Workers. Preferred, and in use: the live Worker reaches the
+  `cloudroot` project this way.
 - **Any other Postgres (Supabase, Azure, ...)**: postgres.js over a TCP
   socket, one connection per request, through Drizzle's `postgres-js`
   adapter. Supabase should use its pooler URL (port 6543), since the direct
@@ -92,10 +102,15 @@ matching migration, so they were probably applied with `drizzle-kit push`.
   chat's `lib/db/drizzle-schema.ts`, and ran successfully on an empty Neon
   database.
 - `db/0002_enable_pgcrypto.sql` enables pgcrypto, which the Worker's password
-  hashing needs. Run it after 0001 on any new database. The hashing was tested
-  locally on PGlite, not yet on Neon.
-- The live production schema was never compared with this SQL. A
-  `pg_dump --schema-only` of the four tables would show any drift.
+  hashing needs. Run it after 0001 on any new database. Both ran on the
+  `cloudroot` Neon project, and `setup-neon.mjs` checked that bcrypt works
+  there.
+- chat's own migrations (`chat/lib/db/migrations/`) assume Supabase:
+  `0002_functions.sql` and `0004_triggers.sql` use `auth.users`,
+  `0005_rls.sql` uses `auth.uid()` throughout, and `0013_storage_setup.sql`
+  sets up Supabase Storage. They won't run on Neon as they are, so chat's
+  tables (chats, messages, documents, ...) need Neon versions before chat can
+  use the Neon database.
 - `chat/DEPLOYMENT_GUIDE.md` Step 2 holds a second copy of the same DDL. Two
   copies can drift, so point the guide at `db/0001` instead.
 
@@ -113,11 +128,8 @@ adapter creates, so users get BetterAuth's default 32-character ids. The
 Worker already uses `advanced.database.generateId` and creates UUIDs.
 
 Fixed in chat: `generateId` is now under `advanced.database`, and new
-sign-ups get UUIDs (tested on PGlite). Users already
-created with non-UUID ids keep failing until either those ids are rewritten
-(in `user` and the `user_id` columns of `session` and `account`) or chat's
-`user_id` columns change to `text`. Whether production has such users is
-*unverified*.
+sign-ups get UUIDs (tested on PGlite). Since users aren't copied from
+Supabase, the Neon database has no old non-UUID ids to repair.
 
 ## Password storage
 
@@ -130,9 +142,10 @@ pgcrypto's bcrypt (`crypt(password, gen_salt('bf', 10))`): it sends the
 password, waits, and continues in the same request
 (`worker/src/auth/password.js`). bcrypt reads only the first 72 bytes.
 
-**Existing scrypt hashes** from chat are checked once in the Worker with
-`node:crypto` and rewritten as bcrypt. That one check may exceed the
-free-plan CPU limit; if it does, the user resets their password.
+**scrypt fallback.** Both the Worker and chat still accept BetterAuth's
+default scrypt hashes and rewrite them as bcrypt. Since users aren't copied
+from Supabase, the Neon database shouldn't hold any. The fallback could be
+removed later.
 
 **chat hashes the same way.** `chat/lib/auth/password.ts` uses the same
 pgcrypto SQL as the Worker, with the same scrypt fallback and upgrade
@@ -140,12 +153,12 @@ pgcrypto SQL as the Worker, with the same scrypt fallback and upgrade
 Tested on PGlite: each side verifies the other's hashes, and a legacy
 scrypt account signs in through chat and is rewritten as bcrypt.
 
-**Share a database once that's deployed.** chat deployments that predate
-this change can verify only scrypt, so anyone who signs up through the
-Worker couldn't sign in to them. Until chat's change is live, the env file
-keeps the Worker's database as `AUTH_POSTGRES_URL`, apart from chat's
-`POSTGRES_URL`, and `automation/sync-config.sh` syncs `POSTGRES_URL` only
-with `--database`. After that, both can hold the same Neon URL.
+**One database for both.** chat should use the Worker's Neon database, so
+an account made on either side works on both. Until chat points there, the
+env file keeps the Worker's database as `AUTH_POSTGRES_URL`, apart from
+chat's `POSTGRES_URL` (still Supabase), and `automation/sync-config.sh`
+syncs `POSTGRES_URL` only with `--database`. Once chat moves, both hold the
+same Neon URL.
 
 ## Supabase dependencies that remain in chat
 
@@ -184,12 +197,13 @@ shared `BETTER_AUTH_SECRET`. `requests` needs the same.
 1. ✅ **Static frontend.** This repo, built as a static export
    (`basePath: /auth`). It calls the API on its own origin, or
    `NEXT_PUBLIC_AUTH_API_URL`.
-2. **Neon migration.** chat's driver is switched (✅ PR #38). Remaining:
-   provision Neon, run `db/0001` and `db/0002`, set the Worker's
-   `POSTGRES_URL`; fix chat's `generateId` (✅); give chat's BetterAuth the
-   same pgcrypto hash and verify functions (✅); copy the four auth tables from
-   Supabase. All users are signed out once at cutover; password hashes move
-   with `account`, so credentials stay valid.
+2. **Neon migration.** Done: chat's driver is switched (PR #38); the Neon
+   project `cloudroot` exists with `db/0001` and `db/0002` applied, and is
+   the Worker's `POSTGRES_URL`; chat's `generateId` is fixed and it hashes
+   with pgcrypto like the Worker (efbb774). Users aren't copied from
+   Supabase. Remaining: Neon versions of chat's own migrations, then point
+   chat's `POSTGRES_URL` (Vercel and the local env file) at the same
+   database.
 3. ✅ **Auth Worker.** `CloudRoot/worker/src/auth/`, deployed alongside
    chat's implementation rather than replacing it.
 4. **Cutover.** Point other sites' widgets at cloud.model.earth. Verify each
@@ -208,7 +222,8 @@ chat user.
 **Prerequisites.** The Worker handles sign-in, sign-up, sign-out and session
 validation against a real database. Every configured OAuth provider is
 tested, including in Chrome incognito. chat and `requests` validate sessions
-issued by the Worker. Existing users sign in without re-registering.
+issued by the Worker. chat's users are told to register again, since
+Supabase accounts aren't carried over.
 
 **Removable now.** Three files are dead: `app/(auth)/actions.ts` (a
 NextAuth-era stub), `lib/auth/instance-edge.ts` (an unused Edge instance) and
@@ -329,21 +344,23 @@ APIs) run in the CloudRoot Worker instead. See CloudRoot `PLAN.md`,
 
 ## Open items, in suggested order
 
-1. Add `NEON_API_KEY` to the env file and run
-   `node automation/setup-neon.mjs` in CloudRoot. It creates the Neon
-   project, runs `db/0001` then `db/0002`, saves `AUTH_POSTGRES_URL`, sets
-   the Worker's `POSTGRES_URL` secret and redeploys. Then test
-   email/password sign-in on cloud.model.earth.
+1. ✅ Neon database created with `node automation/setup-neon.mjs` (8
+   October 2026). Still to do: register and sign in with email/password on
+   cloud.model.earth.
 2. Register the OAuth apps with the callback above, then test each provider
    on cloud.model.earth and from model.earth, including in Chrome incognito.
-3. Deal with existing non-UUID user ids in chat's database (chat's
-   `generateId` is fixed, so new users get UUIDs).
-4. Decide what happens to Supabase storage and logging in chat.
-5. Compare the live auth schema with `db/0001`.
+3. Write Neon versions of chat's migrations: drop the `auth.users` checks
+   and triggers and the `auth.uid()` row-level security (BetterAuth's
+   `user` table and `lib/auth/server.ts` replace them), and leave out
+   Supabase Storage.
+4. Point chat's `POSTGRES_URL` at the `cloudroot` Neon database, in Vercel
+   and in the local env file (where it's `AUTH_POSTGRES_URL` today), and run
+   chat's migrations there. chat's `0014_pgcrypto.sql` is already covered by
+   `db/0002`. Today https://modelearth.vercel.app/api/auth/db-status reports
+   `unreachable`, since chat's Neon-only driver can't reach Supabase.
+5. Decide what happens to Supabase storage and logging in chat.
 6. Update `chat/DEPLOYMENT_GUIDE.md`: Neon for `POSTGRES_URL`, point at
    `db/0001` instead of its own DDL, and port 3700 (it still lists 8888;
    `server.mjs` defaults to 3700).
-7. Deploy chat's pgcrypto hashing, run its `0014_pgcrypto.sql` migration,
-   then point chat's `POSTGRES_URL` at the Worker's Neon database.
-8. Session validation for chat and `requests` (phase 5), then the cleanup
+7. Session validation for chat and `requests` (phase 5), then the cleanup
    above (phase 6).
