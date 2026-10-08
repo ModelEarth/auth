@@ -116,7 +116,7 @@ matching migration, so they were probably applied with `drizzle-kit push`.
   `auth/db/0001` and `0002` first: migrations run twice cleanly,
   `db:verify` passes, a chat for an unknown user is rejected, deleting a
   user removes their chats and sessions, and a non-owner role sees no rows.
-  Not yet run on the `cloudroot` Neon project.
+  Also run on the `cloudroot` Neon project, where `db:verify` passes.
 - `0008_seed_data_xai_groq.sql` failed on every fresh database: the
   provider check allowed only google, openai and anthropic, and its agent
   configs lacked the `rateLimit` the validation trigger requires. Both are
@@ -361,10 +361,12 @@ APIs) run in the CloudRoot Worker instead. See CloudRoot `PLAN.md`,
    on cloud.model.earth and from model.earth, including in Chrome incognito.
 3. ✅ Neon versions of chat's migrations (`chat/lib/db/migrations/neon/`),
    tested on PGlite.
-4. Run chat's migrations on the `cloudroot` Neon database
-   (`POSTGRES_URL=<AUTH_POSTGRES_URL> npm run db:migrate` in chat), then
-   point chat's `POSTGRES_URL` there, in Vercel and in the local env file
-   (where it's `AUTH_POSTGRES_URL` today). Today https://modelearth.vercel.app/api/auth/db-status reports
+4. ✅ chat's migrations ran on the `cloudroot` Neon database (8 October
+   2026; `db:verify` passes, 18 tables). Still to do: point chat's
+   `POSTGRES_URL` there. On Vercel, `node automation/vercel-env.mjs
+   <project>` in CloudRoot sets it from `AUTH_POSTGRES_URL` and redeploys
+   (needs `VERCEL_API_TOKEN`). Locally, change `POSTGRES_URL` in the env
+   file to the `AUTH_POSTGRES_URL` value. Today https://modelearth.vercel.app/api/auth/db-status reports
    `unreachable`, since chat's Neon-only driver can't reach Supabase.
 5. Decide what happens to Supabase storage and logging in chat.
 6. Update `chat/DEPLOYMENT_GUIDE.md`: Neon for `POSTGRES_URL`, point at
