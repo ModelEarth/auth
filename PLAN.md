@@ -369,16 +369,16 @@ APIs) run in the CloudRoot Worker instead. See CloudRoot `PLAN.md`,
 4. ✅ chat's data has its own Neon project, `chat`, created with
    `node automation/setup-neon-chat.mjs` (8 October 2026; migrations ran,
    `db:verify` passes), and chat signs in against `AUTH_POSTGRES_URL`.
-   Still to do:
-   - On Vercel, `node automation/vercel-env.mjs <project>` in CloudRoot sets
-     `POSTGRES_URL` (from `CHAT_POSTGRES_URL`) and `AUTH_POSTGRES_URL`, and
-     redeploys. Today https://modelearth.vercel.app/api/auth/db-status
-     reports `unreachable`, since chat's Neon-only driver can't reach
-     Supabase.
+   On Vercel, `node automation/vercel-env.mjs modelearth` set both URLs on
+   the `modelearth` project and redeployed (8 October 2026);
+   https://modelearth.vercel.app/api/auth/db-status reports `ok`. Still to
+   do:
    - Locally, set `POSTGRES_URL` in the env file to the `CHAT_POSTGRES_URL`
      value.
-   - Drop chat's 14 tables and 10 functions from `cloudroot`, left from
-     when chat's migrations first ran there. They hold only seed config.
+   - `POSTGRES_URL` on `modelearth` covers Production only, so Preview
+     deployments have no chat database.
+   - The `vercel-root` project (studio2) belongs to the `dream-studio2`
+     team, which the current token can't reach.
 5. Decide what happens to Supabase storage and logging in chat.
 6. Update `chat/DEPLOYMENT_GUIDE.md`: Neon for `POSTGRES_URL`, point at
    `db/0001` instead of its own DDL, and port 3700 (it still lists 8888;
