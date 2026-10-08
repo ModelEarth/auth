@@ -105,12 +105,22 @@ matching migration, so they were probably applied with `drizzle-kit push`.
   hashing needs. Run it after 0001 on any new database. Both ran on the
   `cloudroot` Neon project, and `setup-neon.mjs` checked that bcrypt works
   there.
-- chat's own migrations (`chat/lib/db/migrations/`) assume Supabase:
-  `0002_functions.sql` and `0004_triggers.sql` use `auth.users`,
-  `0005_rls.sql` uses `auth.uid()` throughout, and `0013_storage_setup.sql`
-  sets up Supabase Storage. They won't run on Neon as they are, so chat's
-  tables (chats, messages, documents, ...) need Neon versions before chat can
-  use the Neon database.
+- chat's own migrations (`chat/lib/db/migrations/`) assumed Supabase:
+  `auth.users` in `0002_functions.sql` and `0004_triggers.sql`, `auth.uid()`
+  in `0005_rls.sql`, and Supabase Storage in `0013_storage_setup.sql`. Neon
+  versions are in `migrations/neon/`, and `migrate.ts` picks them for a
+  `*.neon.tech` host (see `chat/lib/db/migrations/README.md`): user checks
+  and the delete cascade use BetterAuth's `"user"` table, RLS is on with no
+  policies (chat connects as the owner and checks access in
+  `lib/auth/server.ts`), and Storage is skipped. Tested on PGlite with
+  `auth/db/0001` and `0002` first: migrations run twice cleanly,
+  `db:verify` passes, a chat for an unknown user is rejected, deleting a
+  user removes their chats and sessions, and a non-owner role sees no rows.
+  Not yet run on the `cloudroot` Neon project.
+- `0008_seed_data_xai_groq.sql` failed on every fresh database: the
+  provider check allowed only google, openai and anthropic, and its agent
+  configs lacked the `rateLimit` the validation trigger requires. Both are
+  fixed; 0008 widens the check on existing databases too.
 - `chat/DEPLOYMENT_GUIDE.md` Step 2 holds a second copy of the same DDL. Two
   copies can drift, so point the guide at `db/0001` instead.
 
@@ -201,9 +211,9 @@ shared `BETTER_AUTH_SECRET`. `requests` needs the same.
    project `cloudroot` exists with `db/0001` and `db/0002` applied, and is
    the Worker's `POSTGRES_URL`; chat's `generateId` is fixed and it hashes
    with pgcrypto like the Worker (efbb774). Users aren't copied from
-   Supabase. Remaining: Neon versions of chat's own migrations, then point
-   chat's `POSTGRES_URL` (Vercel and the local env file) at the same
-   database.
+   Supabase. chat's migrations have Neon versions (`migrations/neon/`).
+   Remaining: point chat's `POSTGRES_URL` (Vercel and the local env file) at
+   the same database and run them there.
 3. ✅ **Auth Worker.** `CloudRoot/worker/src/auth/`, deployed alongside
    chat's implementation rather than replacing it.
 4. **Cutover.** Point other sites' widgets at cloud.model.earth. Verify each
@@ -349,14 +359,12 @@ APIs) run in the CloudRoot Worker instead. See CloudRoot `PLAN.md`,
    cloud.model.earth.
 2. Register the OAuth apps with the callback above, then test each provider
    on cloud.model.earth and from model.earth, including in Chrome incognito.
-3. Write Neon versions of chat's migrations: drop the `auth.users` checks
-   and triggers and the `auth.uid()` row-level security (BetterAuth's
-   `user` table and `lib/auth/server.ts` replace them), and leave out
-   Supabase Storage.
-4. Point chat's `POSTGRES_URL` at the `cloudroot` Neon database, in Vercel
-   and in the local env file (where it's `AUTH_POSTGRES_URL` today), and run
-   chat's migrations there. chat's `0014_pgcrypto.sql` is already covered by
-   `db/0002`. Today https://modelearth.vercel.app/api/auth/db-status reports
+3. ✅ Neon versions of chat's migrations (`chat/lib/db/migrations/neon/`),
+   tested on PGlite.
+4. Run chat's migrations on the `cloudroot` Neon database
+   (`POSTGRES_URL=<AUTH_POSTGRES_URL> npm run db:migrate` in chat), then
+   point chat's `POSTGRES_URL` there, in Vercel and in the local env file
+   (where it's `AUTH_POSTGRES_URL` today). Today https://modelearth.vercel.app/api/auth/db-status reports
    `unreachable`, since chat's Neon-only driver can't reach Supabase.
 5. Decide what happens to Supabase storage and logging in chat.
 6. Update `chat/DEPLOYMENT_GUIDE.md`: Neon for `POSTGRES_URL`, point at
