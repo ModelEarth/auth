@@ -2,7 +2,6 @@
 
 import { authApiUrl } from "@/lib/auth/api-url";
 import { useAuth } from "@/lib/auth/hooks";
-import { useConfiguredProviders } from "@/lib/auth/use-configured-providers";
 import { Button } from "@/components/ui/button";
 
 
@@ -66,16 +65,24 @@ const PROVIDERS = [
   },
 ];
 
-export function SocialLoginButtons() {
+// The social sign-in setup steps: CloudRoot's automation README, a static
+// page on this site (automation/index.html renders README.md in the browser).
+const SOCIAL_CONFIG_URL = "/automation/";
+
+// configuredProviders is null while the list is loading.
+export function SocialLoginButtons({
+  configuredProviders,
+}: {
+  configuredProviders: readonly string[] | null;
+}) {
   const { user, loading, signOut } = useAuth();
-  const configuredProviders = useConfiguredProviders();
-  const configured = new Set(configuredProviders);
+  const configured = new Set(configuredProviders ?? []);
 
   function signInWith(provider: string) {
     window.location.href = `${authApiUrl()}/api/oauth/${provider}?redirect=${encodeURIComponent(window.location.href)}`;
   }
 
-  if (loading) {
+  if (loading || (!user && configuredProviders === null)) {
     return (
       <div className="flex justify-center py-8">
         <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
@@ -99,6 +106,20 @@ export function SocialLoginButtons() {
           Sign Out
         </Button>
       </div>
+    );
+  }
+
+  // No provider has both its client id and secret set: explain instead of
+  // showing a grid of disabled buttons. Signed-in users still see their
+  // profile and Sign Out above.
+  if (configured.size === 0) {
+    return (
+      <p className="text-center text-gray-500 text-sm dark:text-zinc-400">
+        We haven't activated social auth.{" "}
+        <a className="underline underline-offset-2 hover:text-gray-900 dark:hover:text-zinc-50" href={SOCIAL_CONFIG_URL}>
+          About Config
+        </a>
+      </p>
     );
   }
 

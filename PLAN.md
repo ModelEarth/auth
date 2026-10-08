@@ -164,14 +164,16 @@ projects in `aws-us-east-1`:
 | Database | Neon project | Holds | Used by |
 |---|---|---|---|
 | User | `cloudroot` | `user`, `session`, `account`, `verification` | The Worker (`POSTGRES_URL` secret); chat's sign-in (`AUTH_POSTGRES_URL`) |
-| Chat | `chat` | Chats, messages, documents, settings, logs | chat (`POSTGRES_URL`) |
+| Chat | `chat` | Chats, messages, documents, settings, logs | chat (`CHAT_POSTGRES_URL`, duplicated as `POSTGRES_URL` on Vercel) |
 
 An account made on either side works on both, and chat's data and
 database tools (`db:reset`, seeds) never touch accounts. Postgres can't
 check or cascade across databases, so chat's tables accept any `user_id`,
-and deleting a user leaves their chats behind. chat reads sign-in from
-`AUTH_POSTGRES_URL`, or from `POSTGRES_URL` when that isn't set (one
-database for both, as before). After phase 5, chat no longer needs
+and deleting a user leaves their chats behind. chat reads its data from
+`CHAT_POSTGRES_URL`, falling back to `POSTGRES_URL`; on Vercel the value is
+duplicated as `POSTGRES_URL`, the standard name Vercel's Postgres
+integrations use. It reads sign-in from `AUTH_POSTGRES_URL`, or from chat's
+database when that isn't set (one database for both, as before). After phase 5, chat no longer needs
 `AUTH_POSTGRES_URL` at all. In the env file the two are `AUTH_POSTGRES_URL`
 (`automation/setup-neon.mjs`) and `CHAT_POSTGRES_URL`
 (`automation/setup-neon-chat.mjs`).
@@ -371,12 +373,8 @@ APIs) run in the CloudRoot Worker instead. See CloudRoot `PLAN.md`,
    `db:verify` passes), and chat signs in against `AUTH_POSTGRES_URL`.
    On Vercel, `node automation/vercel-env.mjs modelearth` set both URLs on
    the `modelearth` project and redeployed (8 October 2026);
-   https://modelearth.vercel.app/api/auth/db-status reports `ok`. Still to
-   do:
-   - Locally, set `POSTGRES_URL` in the env file to the `CHAT_POSTGRES_URL`
-     value.
-   - `POSTGRES_URL` on `modelearth` covers Production only, so Preview
-     deployments have no chat database.
+   https://modelearth.vercel.app/api/auth/db-status reports `ok`.
+   `CHAT_POSTGRES_URL` covers Production and Preview. Still to do:
    - The `vercel-root` project (studio2) belongs to the `dream-studio2`
      team, which the current token can't reach.
 5. Decide what happens to Supabase storage and logging in chat.
