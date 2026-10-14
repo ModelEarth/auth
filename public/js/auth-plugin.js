@@ -3,7 +3,7 @@
  *
  * Drop this single script into any page to get full auth functionality:
  *   <script src="https://cloud.model.earth/auth/js/auth-plugin.js" defer></script>
- *   (localsite loads it from the path set in webroot.yaml's auth: block)
+ *   (localsite loads it from the path set in support/site/config.yaml's auth: block)
  *
  * The plugin will:
  *   1. Detect environment and configure AUTH_API_URL

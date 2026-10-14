@@ -12,7 +12,7 @@ Worker, which also runs the sign-in API (`/api/auth`) on the same origin.
 | `/auth/js/auth-plugin.js` | Drop-in widget for other pages: injects sign-in into `#accountPanelInserts`, or a floating button (`public/js/`) |
 | `/auth/js/auth-modal.js` | Popup the widget loads when needed |
 
-localsite loads the widget from the path in the site's `webroot.yaml`
+localsite loads the widget from the path in the site's `support/site/config.yaml`
 `auth:` block (CloudRoot's points at `/auth/js/auth-plugin.js`).
 
 ## How it runs
