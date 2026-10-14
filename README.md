@@ -64,4 +64,5 @@ When `/auth/` shows "Can't reach the database", a free-tier Neon or Supabase
 database has probably paused; open its dashboard to wake it.
 
 See [PLAN.md](PLAN.md) for status, open items, and the cleanup of the old
-copy in `chat`.
+copy in `chat`, and [oauth-setup.md](oauth-setup.md) to register each social
+sign-in provider.
