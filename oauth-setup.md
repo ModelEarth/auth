@@ -85,7 +85,7 @@ Provider name: `github`
 
 1. Go to [GitHub → Settings → Developer settings → OAuth Apps](https://github.com/settings/developers)
 2. Click **New OAuth App**
-3. Set **Authorization callback URL**:
+3. Set **Redirect URI** (leave **Allow wildcard matching** off):
    ```
    https://cloud.model.earth/api/auth/callback/github
    ```
