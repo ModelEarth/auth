@@ -349,8 +349,6 @@ APIs) run in the CloudRoot Worker instead. See CloudRoot `PLAN.md`,
   latest. A submodule at an older commit shows as modified in `git status`,
   and committing that silently reverts other people's pointer updates. Check
   `git status` before committing in CloudRoot.
-- A submodule pinned to a commit that no longer exists on its remote fails
-  the whole checkout. This happened with `sanity` in `webroot`.
 - GitHub shows no workflows on a fork whose `main` is behind the upstream
   branch that added them. See `automation/README.md`.
 - `automation/sync-config.sh` needs bash. On Windows without WSL, the
